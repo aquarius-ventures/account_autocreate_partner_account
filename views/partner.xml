@@ -5,12 +5,13 @@
         <field name="model">res.partner</field>
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
-            <header position="inside">
-                <button name="create_debtor_and_creditor_accounts"
+            <xpath expr="//sheet" position="before">
+                <header>
+                    <button name="create_debtor_and_creditor_accounts"
                         string="Debitor/Kreditor-Konten anlegen"
-                        type="object"
-                        class="btn-primary"/>
-            </header>
+                        type="object" />
+                </header>
+            </xpath>
         </field>
     </record>
 </odoo>
