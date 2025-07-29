@@ -8,6 +8,7 @@
     "depends": ["account"],
     "data": [
         "data/server_action.xml",
+        "views/partner.xml",
     ],
     "installable": True,
     "application": False,
