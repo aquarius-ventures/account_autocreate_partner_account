@@ -1,9 +1,7 @@
-from odoo import models, api
-
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
-    def action_create_debtor_account(self):
+    def create_debtor_account(self):
         KONTEN_START = 101100000
         KONTEN_MAX = 109999999
 
@@ -20,7 +18,10 @@ class ResPartner(models.Model):
                     next_number += 1
                 if next_number <= KONTEN_MAX:
                     konto_nummer = str(next_number)
-                    konto_name = f"{partner.lastname}, {partner.firstname}" if hasattr(partner, "lastname") and hasattr(partner, "firstname") and partner.lastname and partner.firstname else partner.name or "Debitor"
+                    if hasattr(partner, "lastname") and hasattr(partner, "firstname") and partner.lastname and partner.firstname:
+                        konto_name = f"{partner.lastname}, {partner.firstname}"
+                    else:
+                        konto_name = partner.name or "Debitor"
                     account = Account.create({
                         'code': konto_nummer,
                         'name': konto_name,
@@ -29,4 +30,3 @@ class ResPartner(models.Model):
                         'company_id': partner.company_id.id if partner.company_id else self.env.company.id,
                     })
                     partner.property_account_receivable_id = account.id
-        return True
