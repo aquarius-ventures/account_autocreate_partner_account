@@ -1,11 +1,11 @@
-<record id="view_partner_form_debtor_button" model="ir.ui.view">
-    <field name="name">res.partner.form.debtor.button</field>
+<record id="view_partner_form_debtorcreditor_button" model="ir.ui.view">
+    <field name="name">res.partner.form.debtorcreditor.button</field>
     <field name="model">res.partner</field>
     <field name="inherit_id" ref="base.view_partner_form"/>
     <field name="arch" type="xml">
         <header position="inside">
-            <button name="create_debtor_account"
-                    string="Debitorenkonto anlegen"
+            <button name="create_debtorcreditor_accounts"
+                    string="Erstelle Debitor- und Kreditorkonten"
                     type="object"
                     class="btn-primary"/>
         </header>

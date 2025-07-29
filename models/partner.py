@@ -1,4 +1,4 @@
-from odoo import models
+from odoo import models, api
 
 import logging
 
@@ -8,7 +8,7 @@ _logger = logging.getLogger(__name__)
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
-    def create_debtor_account(self):
+    def create_debtor_and_creditor_accounts(self):
         DEBTOR_PREFIX = 10
         CREDITOR_PREFIX = 70
         KONTEN_START = 1100000
@@ -58,13 +58,12 @@ class ResPartner(models.Model):
                 else:
                     # Optional: Fehler werfen oder warnen, falls alle Nummern belegt
                     _logger.warning('Alle Debitorennummern vergeben!')
-                    pass
                 pass
 
             # Kreditorenkonto erstellen
             if not partner.property_account_payable_id:
 
-                next_creditor_number = DEBTOR_PREFIX * 10000000 + next_number
+                next_creditor_number = CREDITOR_PREFIX * 10000000 + next_number
                 creditor_max = CREDITOR_PREFIX * 10000000 + KONTEN_MAX
 
                 # Sicherstellen, dass der nächste Code noch frei ist
@@ -96,3 +95,9 @@ class ResPartner(models.Model):
                 pass
 
         return True
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        partners = super().create(vals_list)
+        partners.create_debtor_and_creditor_accounts()
+        return partners
