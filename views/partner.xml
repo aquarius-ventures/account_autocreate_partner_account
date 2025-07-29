@@ -4,7 +4,7 @@
     <field name="inherit_id" ref="base.view_partner_form"/>
     <field name="arch" type="xml">
         <header position="inside">
-            <button name="action_create_debtor_account"
+            <button name="create_debtor_account"
                     string="Debitorenkonto anlegen"
                     type="object"
                     class="btn-primary"/>
