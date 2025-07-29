@@ -1,0 +1,50 @@
+<odoo>
+    <record id="account_autocreate_partner_account_server_action" model="ir.actions.server">
+        <field name="name">Auto-create Debitor Account for Partner</field>
+        <field name="model_id" ref="base.model_res_partner"/>
+        <field name="binding_model_id" ref="base.model_res_partner"/>
+        <field name="binding_type">create</field>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[
+# Debitorenkontonummernkreis: 101100000 bis 109999999
+KONTEN_START = 101100000
+KONTEN_MAX = 109999999
+
+if record and not record.property_account_receivable_id:
+    # Suche das höchste bereits vergebene Konto im Bereich
+    existing_accounts = env['account.account'].search([
+        ('code', '>=', str(KONTEN_START)),
+        ('code', '<=', str(KONTEN_MAX)),
+    ], order='code desc', limit=1)
+
+    if existing_accounts:
+        next_number = int(existing_accounts.code) + 1
+    else:
+        next_number = KONTEN_START
+
+    # Prüfe, ob noch frei und im erlaubten Bereich
+    while env['account.account'].search_count([('code', '=', str(next_number))]) > 0 and next_number <= KONTEN_MAX:
+        next_number += 1
+
+    if next_number <= KONTEN_MAX:
+        konto_nummer = str(next_number)
+        # Name: Nachname, Vorname (Fallback: Partner-Name)
+        if hasattr(record, "lastname") and hasattr(record, "firstname") and record.lastname and record.firstname:
+            konto_name = f"{record.lastname}, {record.firstname}"
+        else:
+            konto_name = record.name or "Debitor"
+
+        account = env['account.account'].create({
+            'code': konto_nummer,
+            'name': konto_name,
+            'user_type_id': env.ref('account.data_account_type_receivable').id,
+            'reconcile': True,
+            'company_id': record.company_id.id if record.company_id else env.company.id,
+        })
+        record.property_account_receivable_id = account.id
+    else:
+        # Alle Nummern vergeben: Optionale Warnung oder Logging
+        pass
+        ]]></field>
+    </record>
+</odoo>
