@@ -3,7 +3,7 @@
         <field name="name">Auto-create Debitor Account for Partner</field>
         <field name="model_id" ref="base.model_res_partner"/>
         <field name="binding_model_id" ref="base.model_res_partner"/>
-        <field name="binding_type">create</field>
+        <field name="binding_type">on_create</field>
         <field name="state">code</field>
         <field name="code"><![CDATA[
 # Debitorenkontonummernkreis: 101100000 bis 109999999
