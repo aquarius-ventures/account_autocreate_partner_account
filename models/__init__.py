@@ -1,2 +1,2 @@
 # empty, da das Modul nur eine Server-Aktion hinterlegt
-from . import models
+from . import partner
