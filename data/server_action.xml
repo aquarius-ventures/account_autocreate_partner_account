@@ -1,23 +1,13 @@
 <odoo>
-    <!-- Automatisch beim Anlegen -->
-    <record id="account_autocreate_partner_account_server_action_on_create" model="ir.actions.server">
-        <field name="name">Automatisch: Debitor- und Kreditorkonten bei Anlage</field>
-        <field name="model_id" ref="base.model_res_partner"/>
-        <field name="state">code</field>
-        <field name="binding_model_id" ref="base.model_res_partner"/>
-        <field name="binding_type">on_create</field>
-        <field name="code">
-            record.create_debtor_and_creditor_accounts()
-        </field>
-    </record>
-
     <!-- Multi-/Massenaktion (Listenansicht) -->
-    <record id="account_autocreate_partner_account_server_action_mass" model="ir.actions.server">
-        <field name="name">[Massenaktion] Debitor- und Kreditorkonten erzeugen</field>
+    <record id="account_autocreate_partner_account_server_action_multi" model="ir.actions.server">
+        <field name="name">Debitor- und Kreditorkonten erzeugen</field>
         <field name="model_id" ref="base.model_res_partner"/>
+        <field name="binding_type">object</field>
         <field name="state">code</field>
         <field name="code">
-            record.create_debtor_and_creditor_accounts()
+            for partner in records:
+            partner.create_debtor_and_creditor_accounts()
         </field>
     </record>
 </odoo>
