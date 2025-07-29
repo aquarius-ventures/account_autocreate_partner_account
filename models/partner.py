@@ -34,7 +34,7 @@ class ResPartner(models.Model):
                     account = Account.create({
                         'code': konto_nummer,
                         'name': konto_name,
-                        'account_type': 'receivable',
+                        'account_type': 'asset_receivable',
                         'reconcile': True,
                         'company_id': partner.company_id.id if partner.company_id else self.env.company.id,
                     })
