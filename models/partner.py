@@ -11,7 +11,6 @@ class ResPartner(models.Model):
         KONTEN_MAX = 109999999
 
         Account = self.env['account.account']
-        account_type = self.env.ref('account.data_account_type_receivable')
 
         for partner in self:
             if not partner.property_account_receivable_id:
@@ -35,7 +34,7 @@ class ResPartner(models.Model):
                     account = Account.create({
                         'code': konto_nummer,
                         'name': konto_name,
-                        'user_type_id': account_type.id,
+                        'account_type': 'receivable',
                         'reconcile': True,
                         'company_id': partner.company_id.id if partner.company_id else self.env.company.id,
                     })
