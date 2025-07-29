@@ -3,7 +3,6 @@
     <record id="account_autocreate_partner_account_server_action_multi" model="ir.actions.server">
         <field name="name">Debitor- und Kreditorkonten erzeugen</field>
         <field name="model_id" ref="base.model_res_partner"/>
-        <field name="binding_type">object</field>
         <field name="state">code</field>
         <field name="code">
             for partner in records:
