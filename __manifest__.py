@@ -1,5 +1,5 @@
 {
-    "name": "Auto-create Debitor and Creditor Accounts for Partners",
+    "name": "Auto-create Debtor and Creditor Accounts for Partners",
     "version": "16.0.1.0.0",
     "author": "Aquarius Ventures GmbH",
     "license": "AGPL-3",
