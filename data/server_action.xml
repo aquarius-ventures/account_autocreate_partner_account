@@ -4,9 +4,9 @@
         <field name="name">Debitor- und Kreditorkonten erzeugen</field>
         <field name="model_id" ref="base.model_res_partner"/>
         <field name="state">code</field>
-        <field name="code">
-            for partner in records:
-            partner.create_debtor_and_creditor_accounts()
-        </field>
+        <field name="code"><![CDATA[
+for partner in records:
+    partner.create_debtor_and_creditor_accounts()
+        ]]></field>
     </record>
 </odoo>
