@@ -8,6 +8,19 @@ _logger = logging.getLogger(__name__)
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
+    def _has_explicit_property(self, field_name):
+        """True, wenn für diesen Partner ein eigener ir.property-Eintrag existiert
+        (d. h. nicht nur der Default greift)."""
+        self.ensure_one()
+        IrProperty = self.env['ir.property'].sudo()
+        res_id = f'res.partner,{self.id}'
+        company_id = (self.company_id or self.env.company).id
+        return bool(IrProperty.search([
+            ('name', '=', field_name),
+            ('res_id', '=', res_id),
+            ('company_id', '=', company_id),
+        ], limit=1))
+
     def create_debtor_and_creditor_accounts(self):
         DEBTOR_PREFIX = 10
         CREDITOR_PREFIX = 70
@@ -18,6 +31,15 @@ class ResPartner(models.Model):
 
         for partner in self:
 
+            # Nur anlegen, wenn KEIN individueller Wert existiert (Default würde greifen)
+            need_receivable = not partner._has_explicit_property('property_account_receivable_id')
+            need_payable    = not partner._has_explicit_property('property_account_payable_id')
+
+            if not (need_receivable or need_payable):
+                _logger.info("Übersprungen (explizite Konten vorhanden) für Partner %s (%s)", partner.id,
+                             partner.display_name)
+                continue
+
             existing_accounts = Account.search([
                 ('code', '>=', str(DEBTOR_PREFIX * 10000000 + KONTEN_START)),
                 ('code', '<=', str(DEBTOR_PREFIX * 10000000 + KONTEN_MAX)),
@@ -27,7 +49,7 @@ class ResPartner(models.Model):
                 existing_accounts.code) - DEBTOR_PREFIX * 10000000 + 1 if existing_accounts else KONTEN_START
 
             # Debitorenkonto erstellen
-            if not partner.property_account_receivable_id:
+            if not need_receivable:
 
                 next_debtor_number = DEBTOR_PREFIX * 10000000 + next_number
                 debtor_max = DEBTOR_PREFIX * 10000000 + KONTEN_MAX
@@ -61,7 +83,7 @@ class ResPartner(models.Model):
                 pass
 
             # Kreditorenkonto erstellen
-            if not partner.property_account_payable_id:
+            if not need_payable:
 
                 next_creditor_number = CREDITOR_PREFIX * 10000000 + next_number
                 creditor_max = CREDITOR_PREFIX * 10000000 + KONTEN_MAX
