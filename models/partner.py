@@ -49,7 +49,7 @@ class ResPartner(models.Model):
                 existing_accounts.code) - DEBTOR_PREFIX * 10000000 + 1 if existing_accounts else KONTEN_START
 
             # Debitorenkonto erstellen
-            if not need_receivable:
+            if need_receivable:
 
                 next_debtor_number = DEBTOR_PREFIX * 10000000 + next_number
                 debtor_max = DEBTOR_PREFIX * 10000000 + KONTEN_MAX
@@ -83,7 +83,7 @@ class ResPartner(models.Model):
                 pass
 
             # Kreditorenkonto erstellen
-            if not need_payable:
+            if need_payable:
 
                 next_creditor_number = CREDITOR_PREFIX * 10000000 + next_number
                 creditor_max = CREDITOR_PREFIX * 10000000 + KONTEN_MAX
