@@ -1,25 +1,10 @@
 from odoo import models, api
-
 import logging
 
 _logger = logging.getLogger(__name__)
 
-
 class ResPartner(models.Model):
     _inherit = 'res.partner'
-
-    def _has_explicit_property(self, field_name):
-        """True, wenn für diesen Partner ein eigener ir.property-Eintrag existiert
-        (d. h. nicht nur der Default greift)."""
-        self.ensure_one()
-        IrProperty = self.env['ir.property'].sudo()
-        res_id = f'res.partner,{self.id}'
-        company_id = (self.company_id or self.env.company).id
-        return bool(IrProperty.search([
-            ('name', '=', field_name),
-            ('res_id', '=', res_id),
-            ('company_id', '=', company_id),
-        ], limit=1))
 
     def create_debtor_and_creditor_accounts(self):
         DEBTOR_PREFIX = 10
@@ -30,91 +15,70 @@ class ResPartner(models.Model):
         Account = self.env['account.account']
 
         for partner in self:
+            # Diagnose: zeigen, dass die Methode wirklich aufgerufen wird
+            _logger.warning("Auto-Accounts angestoßen für Partner %s (ID %s)", partner.display_name, partner.id)
 
-            # Nur anlegen, wenn KEIN individueller Wert existiert (Default würde greifen)
-            need_receivable = not partner._has_explicit_property('property_account_receivable_id')
-            need_payable    = not partner._has_explicit_property('property_account_payable_id')
+            company = partner.company_id or self.env.company
+            default_recv = company.account_receivable_id
+            default_pay = company.account_payable_id
 
-            if not (need_receivable or need_payable):
-                _logger.info("Übersprungen (explizite Konten vorhanden) für Partner %s (%s)", partner.id,
-                             partner.display_name)
-                continue
-
+            # höchste bereits vergebene Debitorennummer finden
             existing_accounts = Account.search([
                 ('code', '>=', str(DEBTOR_PREFIX * 10000000 + KONTEN_START)),
                 ('code', '<=', str(DEBTOR_PREFIX * 10000000 + KONTEN_MAX)),
             ], order='code desc', limit=1)
+            next_number = (int(existing_accounts.code) - DEBTOR_PREFIX * 10000000 + 1) if existing_accounts else KONTEN_START
 
-            next_number = int(
-                existing_accounts.code) - DEBTOR_PREFIX * 10000000 + 1 if existing_accounts else KONTEN_START
-
-            # Debitorenkonto erstellen
-            if need_receivable:
-
+            # -------- Debitor --------
+            if partner.property_account_receivable_id and partner.property_account_receivable_id != default_recv:
+                _logger.info("Übersprungen: Partner %s hat bereits individuelles Debitorenkonto %s",
+                             partner.id, partner.property_account_receivable_id.code)
+            else:
                 next_debtor_number = DEBTOR_PREFIX * 10000000 + next_number
                 debtor_max = DEBTOR_PREFIX * 10000000 + KONTEN_MAX
-
-                # Sicherstellen, dass der nächste Code noch frei ist
-                while Account.search_count(
-                        [('code', '=', str(next_debtor_number))]) > 0 and next_debtor_number <= debtor_max:
+                while Account.search_count([('code', '=', str(next_debtor_number))]) > 0 and next_debtor_number <= debtor_max:
                     next_debtor_number += 1
-
                 if next_debtor_number <= debtor_max:
-                    konto_nummer = str(next_debtor_number)
-                    # Name: Nachname, Vorname (Fallback: Partner-Name)
-                    if hasattr(partner, "lastname") and hasattr(partner,
-                                                                "firstname") and partner.lastname and partner.firstname:
-                        konto_name = f"{partner.lastname}, {partner.firstname}"
-                    else:
-                        konto_name = partner.name or "Debitor"
-                    account = Account.create({
-                        'code': konto_nummer,
+                    debtor_code = str(next_debtor_number)
+                    konto_name = (f"{getattr(partner, 'lastname', '')}, {getattr(partner, 'firstname', '')}".strip(", ")
+                                  or partner.name or "Debitor")
+                    account_recv = Account.create({
+                        'code': debtor_code,
                         'name': konto_name,
                         'account_type': 'asset_receivable',
                         'reconcile': True,
-                        'company_id': partner.company_id.id if partner.company_id else self.env.company.id,
+                        'company_id': company.id,
                     })
-                    _logger.info("Debitorenkonto %s angelegt", konto_nummer)
-                    partner.property_account_receivable_id = account.id
-                    _logger.info("Debitorenkonto %s dem Partner %s zugewiesen.", konto_nummer, konto_name)
+                    partner.property_account_receivable_id = account_recv.id
+                    _logger.info("Debitorenkonto %s angelegt und zugewiesen an Partner %s", debtor_code, partner.id)
+                    next_number = next_debtor_number - DEBTOR_PREFIX * 10000000 + 1
                 else:
-                    # Optional: Fehler werfen oder warnen, falls alle Nummern belegt
-                    _logger.warning('Alle Debitorennummern vergeben!')
-                pass
+                    _logger.warning("Alle Debitorennummern vergeben (Prefix %s).", DEBTOR_PREFIX)
 
-            # Kreditorenkonto erstellen
-            if need_payable:
-
-                next_creditor_number = CREDITOR_PREFIX * 10000000 + next_number
+            # -------- Kreditor --------
+            if partner.property_account_payable_id and partner.property_account_payable_id != default_pay:
+                _logger.info("Übersprungen: Partner %s hat bereits individuelles Kreditorenkonto %s",
+                             partner.id, partner.property_account_payable_id.code)
+            else:
+                next_creditor_number = CREDITOR_PREFIX * 10000000 + (next_number or KONTEN_START)
                 creditor_max = CREDITOR_PREFIX * 10000000 + KONTEN_MAX
-
-                # Sicherstellen, dass der nächste Code noch frei ist
-                while Account.search_count(
-                        [('code', '=', str(next_creditor_number))]) > 0 and next_creditor_number <= creditor_max:
+                while Account.search_count([('code', '=', str(next_creditor_number))]) > 0 and next_creditor_number <= creditor_max:
                     next_creditor_number += 1
-
                 if next_creditor_number <= creditor_max:
-                    konto_nummer = str(next_creditor_number)
-                    # Name: Nachname, Vorname (Fallback: Partner-Name)
-                    if hasattr(partner, "lastname") and hasattr(partner,
-                                                                "firstname") and partner.lastname and partner.firstname:
-                        konto_name = f"{partner.lastname}, {partner.firstname}"
-                    else:
-                        konto_name = partner.name or "Kreditor"
-                    account = Account.create({
-                        'code': konto_nummer,
+                    creditor_code = str(next_creditor_number)
+                    konto_name = (f"{getattr(partner, 'lastname', '')}, {getattr(partner, 'firstname', '')}".strip(", ")
+                                  or partner.name or "Kreditor")
+                    account_pay = Account.create({
+                        'code': creditor_code,
                         'name': konto_name,
                         'account_type': 'liability_payable',
                         'reconcile': True,
-                        'company_id': partner.company_id.id if partner.company_id else self.env.company.id,
+                        'company_id': company.id,
                     })
-                    _logger.info("Kreditorenkonto %s angelegt", konto_nummer)
-                    partner.property_account_payable_id = account.id
-                    _logger.info("Kreditorenkonto %s dem Partner %s zugewiesen.", konto_nummer, konto_name)
+                    partner.property_account_payable_id = account_pay.id
+                    _logger.info("Kreditorenkonto %s angelegt und zugewiesen an Partner %s", creditor_code, partner.id)
                 else:
-                    # Optional: Fehler werfen oder warnen, falls alle Nummern belegt
-                    _logger.warning('Alle Kreditorennummern vergeben!')
-                pass
+                    _logger.warning("Alle Kreditorennummern vergeben (Prefix %s).", CREDITOR_PREFIX)
 
         return True
 
