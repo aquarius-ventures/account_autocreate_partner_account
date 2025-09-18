@@ -122,21 +122,30 @@ class ResPartner(models.Model):
     def create_debtor_and_creditor_accounts(self):
         Account = self.env['account.account'].sudo()
         Sequence = self.env['ir.sequence'].sudo()
-        use_property = bool(self.env.context.get('assign_via_property'))  # <-- NEU
+        use_property = bool(self.env.context.get('assign_via_property'))  # bleibt bestehen
 
         for partner in self:
             company = partner.company_id or self.env.company
 
-            # Suffix bestimmen (bestehend/persistent -> ableiten -> Sequenz -> kollisionsfrei)
+            # --- Früh entscheiden, ob überhaupt Arbeit nötig ist ---
+            has_rec = self._has_specific_property(partner, 'property_account_receivable_id')
+            has_pay = self._has_specific_property(partner, 'property_account_payable_id')
+            if has_rec and has_pay:
+                # Beide individuellen Properties existieren -> nichts tun, auch keine Sequenz ziehen
+                _logger.info("Übersprungen (beide Properties vorhanden): %s", partner.display_name)
+                continue
+
+            # --- Suffix nur ermitteln, wenn mind. eine Property fehlt ---
             suffix = None
             if partner.account_suffix:
                 try:
                     suffix = int(partner.account_suffix)
                 except Exception:
                     suffix = None
+
+            # Falls noch kein persistenter Suffix: aus bestehend konformen Konten ableiten
             if suffix is None:
-                # aus bestehenden konformen Konten ableiten (falls vorhanden)
-                def _x(acc, expect_prefix):
+                def _derive(acc, expect_prefix):
                     if not acc or acc.company_id.id != company.id:
                         return None
                     code = (acc.code or '').strip()
@@ -144,9 +153,10 @@ class ResPartner(models.Model):
                         return int(code[-7:])
                     return None
 
-                suffix = _x(partner.property_account_receivable_id, DEBTOR_PREFIX) \
-                         or _x(partner.property_account_payable_id, CREDITOR_PREFIX)
+                suffix = _derive(partner.property_account_receivable_id, DEBTOR_PREFIX) \
+                         or _derive(partner.property_account_payable_id, CREDITOR_PREFIX)
 
+            # Sequenz NUR ziehen, wenn weiterhin kein Suffix vorhanden ist und wir wirklich etwas anlegen müssen
             if suffix is None:
                 nxt = Sequence.next_by_code('res.partner.account_suffix')
                 try:
@@ -177,7 +187,7 @@ class ResPartner(models.Model):
             display = ((getattr(partner, 'lastname', '') or ''), (getattr(partner, 'firstname', '') or ''))
             display_name = (f"{display[0]}, {display[1]}".strip(", ") or partner.display_name)
 
-            # Konten sicherstellen
+            # Konten nur erzeugen, wenn wir sie auch zuweisen (min. eine Property fehlt)
             def _ensure(code, name, acc_type):
                 acc = Account.search([('code', '=', code), ('company_id', '=', company.id)], limit=1)
                 return acc or Account.create({
@@ -188,29 +198,29 @@ class ResPartner(models.Model):
                     'account_type': acc_type,  # 'asset_receivable' / 'liability_payable'
                 })
 
-            acc_rec = _ensure(debtor_code, display_name, 'asset_receivable')
-            acc_pay = _ensure(creditor_code, display_name, 'liability_payable')
-
-            # Zuweisung: entweder via Property (kein partner.write) ODER klassisch
-            if not self._has_specific_property(partner, 'property_account_receivable_id'):
+            # Receivable
+            if not has_rec:
+                acc_rec = _ensure(debtor_code, display_name, 'asset_receivable')
                 if use_property:
                     self._set_property(partner, company, 'property_account_receivable_id', acc_rec)
                 else:
                     partner.property_account_receivable_id = acc_rec.id
                 _logger.info("Debitorenkonto %s angelegt/zugewiesen an %s", debtor_code, partner.display_name)
             else:
-                _logger.info("Übersprungen (Debitor): %s hat bereits individuelle Property.", partner.display_name)
+                acc_rec = partner.property_account_receivable_id  # für evtl. spätere Ableitung / Konsistenz
 
-            if not self._has_specific_property(partner, 'property_account_payable_id'):
+            # Payable
+            if not has_pay:
+                acc_pay = _ensure(creditor_code, display_name, 'liability_payable')
                 if use_property:
                     self._set_property(partner, company, 'property_account_payable_id', acc_pay)
                 else:
                     partner.property_account_payable_id = acc_pay.id
                 _logger.info("Kreditorenkonto %s angelegt/zugewiesen an %s", creditor_code, partner.display_name)
             else:
-                _logger.info("Übersprungen (Kreditor): %s hat bereits individuelle Property.", partner.display_name)
+                acc_pay = partner.property_account_payable_id
 
-            # account_suffix nur speichern, wenn wir NICHT via Property gehen (sonst würde partner.write Hooks triggern)
+            # Persistenz des Suffix nur, wenn wir via write() dürfen/gewollt ist
             if not use_property and not partner.account_suffix:
                 partner.account_suffix = f"{suffix:07d}"
 
