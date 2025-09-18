@@ -1,11 +1,21 @@
 from odoo import models, api
 import logging
-
 _logger = logging.getLogger(__name__)
-
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'
+
+    def _has_specific_property(self, partner, field_name):
+        """True, wenn für diesen Partner + Company eine eigene Property existiert (kein Default)."""
+        fields_obj = self.env['ir.model.fields']
+        prop_obj = self.env['ir.property']
+        company = partner.company_id or self.env.company
+        field = fields_obj._get('res.partner', field_name)
+        return bool(prop_obj.search([
+            ('fields_id', '=', field.id),
+            ('res_id', '=', f'res.partner,{partner.id}'),
+            ('company_id', '=', company.id),
+        ], limit=1))
 
     def create_debtor_and_creditor_accounts(self):
         DEBTOR_PREFIX = 10
@@ -18,29 +28,19 @@ class ResPartner(models.Model):
         for partner in self:
             company = partner.company_id or self.env.company
 
-            # <- HIER: Defaults per Property-System je Company holen
-            default_partner = self.with_company(company).new({})
-            default_recv = default_partner.property_account_receivable_id
-            default_pay = default_partner.property_account_payable_id
-
-            # Höchste vergebene Debitoren-Nummer (mit Präfix 10) finden
+            # höchste bereits vergebene Debitorennummer (Prefix 10) in dieser Company
             existing_accounts = Account.search([
                 ('code', '>=', str(DEBTOR_PREFIX * 10000000 + KONTEN_START)),
                 ('code', '<=', str(DEBTOR_PREFIX * 10000000 + KONTEN_MAX)),
                 ('company_id', '=', company.id),
             ], order='code desc', limit=1)
-            next_number = (
-                        int(existing_accounts.code) - DEBTOR_PREFIX * 10000000 + 1) if existing_accounts else KONTEN_START
+            next_number = (int(existing_accounts.code) - DEBTOR_PREFIX * 10000000 + 1) if existing_accounts else KONTEN_START
 
             # -------- Debitor --------
-            if partner.property_account_receivable_id and partner.property_account_receivable_id != default_recv:
-                _logger.info("Skip Debitor: %s hat bereits individuelles Konto %s",
-                             partner.display_name, partner.property_account_receivable_id.code)
-            else:
+            if not self._has_specific_property(partner, 'property_account_receivable_id'):
                 next_debtor_number = DEBTOR_PREFIX * 10000000 + next_number
                 debtor_max = DEBTOR_PREFIX * 10000000 + KONTEN_MAX
-                while Account.search_count(
-                        [('code', '=', str(next_debtor_number)), ('company_id', '=', company.id)]) > 0 \
+                while Account.search_count([('code', '=', str(next_debtor_number)), ('company_id', '=', company.id)]) > 0 \
                         and next_debtor_number <= debtor_max:
                     next_debtor_number += 1
                 if next_debtor_number <= debtor_max:
@@ -56,20 +56,17 @@ class ResPartner(models.Model):
                     })
                     partner.property_account_receivable_id = account_recv.id
                     _logger.info("Debitorenkonto %s angelegt & zugewiesen an %s", debtor_code, partner.display_name)
-                    # Zähler für evtl. aufeinanderfolgende Vergabe anpassen
                     next_number = next_debtor_number - DEBTOR_PREFIX * 10000000 + 1
                 else:
-                    _logger.warning("Alle Debitorennummern (Prefix %s) vergeben.", DEBTOR_PREFIX)
+                    _logger.warning("Alle Debitorennummern vergeben (Prefix %s).", DEBTOR_PREFIX)
+            else:
+                _logger.info("Übersprungen (Debitor): %s hat bereits individuelle Property.", partner.display_name)
 
             # -------- Kreditor --------
-            if partner.property_account_payable_id and partner.property_account_payable_id != default_pay:
-                _logger.info("Skip Kreditor: %s hat bereits individuelles Konto %s",
-                             partner.display_name, partner.property_account_payable_id.code)
-            else:
+            if not self._has_specific_property(partner, 'property_account_payable_id'):
                 next_creditor_number = CREDITOR_PREFIX * 10000000 + (next_number or KONTEN_START)
                 creditor_max = CREDITOR_PREFIX * 10000000 + KONTEN_MAX
-                while Account.search_count(
-                        [('code', '=', str(next_creditor_number)), ('company_id', '=', company.id)]) > 0 \
+                while Account.search_count([('code', '=', str(next_creditor_number)), ('company_id', '=', company.id)]) > 0 \
                         and next_creditor_number <= creditor_max:
                     next_creditor_number += 1
                 if next_creditor_number <= creditor_max:
@@ -86,7 +83,9 @@ class ResPartner(models.Model):
                     partner.property_account_payable_id = account_pay.id
                     _logger.info("Kreditorenkonto %s angelegt & zugewiesen an %s", creditor_code, partner.display_name)
                 else:
-                    _logger.warning("Alle Kreditorennummern (Prefix %s) vergeben.", CREDITOR_PREFIX)
+                    _logger.warning("Alle Kreditorennummern vergeben (Prefix %s).", CREDITOR_PREFIX)
+            else:
+                _logger.info("Übersprungen (Kreditor): %s hat bereits individuelle Property.", partner.display_name)
 
         return True
 
