@@ -7,6 +7,7 @@
     "summary": "Automatisch Debitoren- und Kreditorenkonten bei Partner-Erstellung vergeben (9-stellig, DATEV-konform)",
     "depends": ["account"],
     "data": [
+        "data/sequence.xml",
         "data/server_action.xml",
         "views/partner.xml",
     ],
