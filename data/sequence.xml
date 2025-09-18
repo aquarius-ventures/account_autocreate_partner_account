@@ -1,0 +1,13 @@
+<odoo>
+    <record id="seq_partner_account_suffix" model="ir.sequence">
+        <field name="name">Partner Account Suffix</field>
+        <field name="code">res.partner.account_suffix</field>
+        <field name="prefix"></field>
+        <field name="padding">7</field>
+        <field name="company_id" eval="False"/>
+        <field name="implementation">standard</field>
+        <!-- Start at 1,100,000 so that 10*10,000,000 + 1,100,000 = 101,100,000 -->
+        <field name="number_next">1100000</field>
+        <field name="number_increment">1</field>
+    </record>
+</odoo>
