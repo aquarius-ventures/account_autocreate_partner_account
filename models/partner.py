@@ -18,8 +18,8 @@ class ResPartner(models.Model):
     def _has_specific_property(self, partner, field_name):
         """True if this partner+company has a specific (non-default) property set."""
         fields_obj = self.env['ir.model.fields']
-        prop_obj = self.env['ir.property']
         company = partner.company_id or self.env.company
+        prop_obj = self.env['ir.property'].sudo().with_company(company)
         field = fields_obj._get('res.partner', field_name)
         return bool(prop_obj.search([
             ('fields_id', '=', field.id),
@@ -228,6 +228,7 @@ class ResPartner(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        # VS Code breakpoint here - click on line number to set visual breakpoint
         partners = super().create(vals_list)
         partners.create_debtor_and_creditor_accounts()
         return partners
