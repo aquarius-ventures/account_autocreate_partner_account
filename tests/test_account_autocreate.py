@@ -87,6 +87,30 @@ class TestAutocreateWorld1(common.TransactionCase):
         self.assertEqual(partner.account_suffix,
                          partner.property_account_receivable_id.code[-7:])
 
+    def test_sequence_pulled_past_collision(self):
+        """Modell §5: nach einem Kollisions-Scan zeigt die Sequenz über den
+        tatsächlich vergebenen Suffix hinaus (number_next_actual >= suffix+1)."""
+        seq = self.env["ir.sequence"].search(
+            [("code", "=", "res.partner.account_suffix")], limit=1)
+        self.assertTrue(seq, "Suffix-Sequenz muss existieren")
+        seq.write({"number_next": 5_000_000})  # bekannter Start, resettet die PG-Sequenz
+        Account = self.env["account.account"]
+        # Debitor-Codes für 5.000.000–5.000.002 belegen → Scan muss überspringen
+        for s in (5_000_000, 5_000_001, 5_000_002):
+            Account.create({
+                "code": str(100_000_000 + s),
+                "name": f"Blocker {s}",
+                "account_type": "asset_receivable",
+                "reconcile": True,
+            })
+        partner = self.Partner.create({"name": "Kollisions Test GmbH"})
+        used = int(partner.account_suffix)
+        self.assertEqual(used, 5_000_003, "erster freier Suffix nach den drei Blockern")
+        seq.invalidate_recordset(["number_next_actual"])
+        self.assertGreaterEqual(
+            seq.number_next_actual, used + 1,
+            "Sequenz muss über den übersprungenen Suffix hinaus nachgezogen sein")
+
 
 @tagged("account_autocreate", "account_autocreate_wmid", "standard", "post_install", "-at_install")
 class TestAutocreateWorld2WmId(common.TransactionCase):

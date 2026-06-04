@@ -153,6 +153,7 @@ class ResPartner(models.Model):
     def create_debtor_and_creditor_accounts(self):
         Account = self.env['account.account'].sudo()
         Sequence = self.env['ir.sequence'].sudo()
+        suffix_seq = Sequence.search([('code', '=', 'res.partner.account_suffix')], limit=1)
         use_property = bool(self.env.context.get('assign_via_property'))  # bleibt bestehen
         # Trigger-Quelle steuert das Gate-Verhalten (Modell §9.3):
         #   'create'  -> Auto-Anlage: still überspringen + Log
@@ -270,6 +271,15 @@ class ResPartner(models.Model):
             # Persistenz des Suffix nur, wenn wir via write() dürfen/gewollt ist
             if not use_property and not partner.account_suffix:
                 partner.account_suffix = f"{suffix:07d}"
+
+            # Sequenz nachziehen (Modell §5): number_next soll auf den nächsten
+            # freien Wert zeigen. Nur vorwärts — persistente/abgeleitete Suffixe
+            # können unter dem aktuellen Zähler liegen und dürfen ihn nicht
+            # zurücksetzen.
+            if suffix_seq:
+                suffix_seq.invalidate_recordset(['number_next_actual'])
+                if (suffix + 1) > suffix_seq.number_next_actual:
+                    suffix_seq.write({'number_next': suffix + 1})
 
         if origin == 'mass' and skipped:
             _logger.info(
