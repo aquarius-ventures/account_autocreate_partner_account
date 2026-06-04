@@ -109,3 +109,32 @@ class TestAutocreateWorld2WmId(common.TransactionCase):
         self.assertTrue(rec, "Debitorenkonto muss angelegt sein")
         self.assertEqual(rec.code[:2], DEBTOR_PREFIX)
         self.assertEqual(rec.name, "WM-123456789")
+
+
+@tagged("account_autocreate", "account_autocreate_wmid", "standard", "post_install", "-at_install")
+class TestAutocreateTieBreaker(common.TransactionCase):
+    """E2.3 — Tie-Breaker der Namens-Kaskade: Stufe (a) "Nachname, Vorname"
+    schlägt Stufe (c) "WM-<wm_id>", wenn beides vorhanden ist. Benötigt
+    lastname (partner_firstname) UND wm_id → skipTest-gated (Welt 2 / Track-2)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.Partner = cls.env["res.partner"]
+        cls.RP = cls.Partner
+        missing = [f for f in ("lastname", "wm_id") if f not in cls.Partner._fields]
+        if missing:
+            raise unittest.SkipTest(
+                f"Felder nicht verfügbar: {missing} — partner_firstname/fletscher nicht installiert.")
+
+    def test_clear_name_wins_over_wm_id_helper(self):
+        """Helfer-Ebene: lastname/firstname + wm_id → "Nachname, Vorname"."""
+        p = self.Partner.new({"lastname": "Mustermann", "firstname": "Erika", "wm_id": "123456789"})
+        self.assertEqual(self.RP._compute_account_name(p), "Mustermann, Erika")
+
+    def test_clear_name_wins_over_wm_id_behavior(self):
+        """Verhaltens-Test: Partner mit Klartext-Name UND wm_id → Konto trägt
+        den Klartext-Namen, nicht "WM-<wm_id>"."""
+        partner = self.Partner.create(
+            {"lastname": "Mustermann", "firstname": "Erika", "wm_id": "123456789"})
+        self.assertEqual(partner.property_account_receivable_id.name, "Mustermann, Erika")
