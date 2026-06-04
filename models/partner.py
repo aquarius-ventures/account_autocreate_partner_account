@@ -124,9 +124,13 @@ class ResPartner(models.Model):
         Diskriminiert über den Klartext-Namen, NICHT über display_name (das
         selten wirklich leer ist):
           (a) "Nachname, Vorname" aus den OCA-Feldern lastname/firstname,
-          (b) display_name, sofern ein Klartext-Name (`name`) vorhanden ist.
-        Stufe (c) "WM-<wm_id>" folgt in E2.2.
-        Leerer String, wenn kein benennbarer Anker vorhanden ist."""
+          (b) display_name, sofern ein Klartext-Name (`name`) vorhanden ist,
+          (c) "WM-<wm_id>" als Pseudonym-Fallback.
+        Leerer String, wenn kein benennbarer Anker vorhanden ist.
+
+        `wm_id` lebt in fletscher_wassermeloni_base, nicht in diesem Modul —
+        Zugriff daher defensiv (weiche Abhängigkeit). Ohne dieses Modul greifen
+        nur die Stufen (a) und (b)."""
         lastname = (getattr(partner, 'lastname', '') or '').strip()
         firstname = (getattr(partner, 'firstname', '') or '').strip()
         if lastname or firstname:
@@ -134,12 +138,15 @@ class ResPartner(models.Model):
         raw_name = (partner.name or '').strip()
         if raw_name:
             return (partner.display_name or raw_name).strip()       # (b)
+        wm_id = getattr(partner, 'wm_id', False)                    # (c)
+        wm_id = (wm_id or '').strip() if isinstance(wm_id, str) else wm_id
+        if wm_id:
+            return f"WM-{wm_id}"
         return ''
 
     def _partner_eligible_for_account(self, partner):
         """Anlage-Gate (Modell §9.3): ein Partner bekommt nur dann Konten,
-        wenn er benennbar ist. E2.1: Klartext-Name erforderlich; der
-        wm_id-Pfad wird in E2.2 ergänzt."""
+        wenn er benennbar ist — Klartext-Name ODER wm_id erforderlich."""
         return bool(self._compute_account_name(partner))
 
     def create_debtor_and_creditor_accounts(self):

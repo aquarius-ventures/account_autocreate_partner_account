@@ -6,6 +6,8 @@ Welt-Trennung (siehe AGENTS.md / Business-Logik-Modell):
   greift über den Klartext-Namen. Läuft scharf im vanilla-17-Lab.
 - Welt 2 (mit wm_id): skipTest-gated, scharf nach Track-2-Build (siehe E2.2).
 """
+import unittest
+
 from odoo.tests import common, tagged
 
 DEBTOR_PREFIX = "10"
@@ -75,3 +77,35 @@ class TestAutocreateWorld1(common.TransactionCase):
         self.assertTrue(partner.account_suffix, "account_suffix muss gesetzt sein")
         self.assertEqual(partner.account_suffix,
                          partner.property_account_receivable_id.code[-7:])
+
+
+@tagged("account_autocreate", "account_autocreate_wmid", "standard", "post_install", "-at_install")
+class TestAutocreateWorld2WmId(common.TransactionCase):
+    """Welt 2 — wm_id-Fallback. skipTest-gated: läuft scharf erst nach
+    Track-2-Build mit fletscher_wassermeloni_base (wm_id-Feld vorhanden)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.Partner = cls.env["res.partner"]
+        cls.RP = cls.Partner
+        if "wm_id" not in cls.Partner._fields:
+            raise unittest.SkipTest(
+                "wm_id-Feld nicht verfügbar — fletscher_wassermeloni_base nicht installiert (Welt 1).")
+
+    def test_wm_id_fallback_name_helper(self):
+        """Stufe (c): Ohne Klartext-Name, aber mit wm_id → Name "WM-<wm_id>".
+        Helfer-Ebene (.new()), unabhängig von DB-Pflichtfeldern."""
+        p = self.Partner.new({"name": False, "wm_id": "123456789"})
+        self.assertEqual(self.RP._compute_account_name(p), "WM-123456789")
+        self.assertTrue(self.RP._partner_eligible_for_account(p),
+                        "Partner mit wm_id ist kontoberechtigt")
+
+    def test_wm_id_only_partner_gets_account_named_wm_id(self):
+        """Verhaltens-Test: Partner nur mit wm_id (kein Klartext-Name) →
+        Konto wird angelegt und trägt den Namen "WM-<wm_id>"."""
+        partner = self.Partner.create({"name": False, "wm_id": "123456789"})
+        rec = partner.property_account_receivable_id
+        self.assertTrue(rec, "Debitorenkonto muss angelegt sein")
+        self.assertEqual(rec.code[:2], DEBTOR_PREFIX)
+        self.assertEqual(rec.name, "WM-123456789")
