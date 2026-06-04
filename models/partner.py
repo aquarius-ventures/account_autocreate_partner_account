@@ -28,48 +28,6 @@ class ResPartner(models.Model):
             ('company_id', '=', company.id),
         ], limit=1))
 
-    def _suffix_from_existing_accounts(self, partner, company):
-        """Try to derive the 7-digit suffix from existing receivable/payable accounts."""
-        debtor = partner.property_account_receivable_id
-        creditor = partner.property_account_payable_id
-
-        def extract_suffix(acc, expect_prefix):
-            if not acc or acc.company_id.id != company.id:
-                return None
-            code = (acc.code or '').strip()
-            if len(code) == 9 and code.isdigit() and code.startswith(str(expect_prefix)):
-                # take last 7 digits
-                return int(code[-7:])
-            return None
-
-        # Prefer a matching pair; otherwise any existing matching one
-        d = extract_suffix(debtor, DEBTOR_PREFIX)
-        c = extract_suffix(creditor, CREDITOR_PREFIX)
-        return d if d is not None else c
-
-    def _compute_codes_from_suffix(self, suffix):
-        return (
-            str(DEBTOR_PREFIX * BASE + suffix),
-            str(CREDITOR_PREFIX * BASE + suffix),
-        )
-
-    def _both_codes_free(self, debtor_code, creditor_code, company):
-        Account = self.env['account.account'].sudo()
-        exists = Account.search_count([('code', 'in', [debtor_code, creditor_code]), ('company_id', '=', company.id)])
-        return exists == 0
-
-    def _next_free_suffix(self, start_suffix, company):
-        """Find next suffix so that BOTH debtor+creditor codes are free."""
-        suffix = max(start_suffix, MIN_SUFFIX)
-        Account = self.env['account.account'].sudo()
-        # The theoretical upper bound is 9,999,999 -> codes 109999999 / 709999999
-        while suffix <= 9_999_999:
-            debtor_code, creditor_code = self._compute_codes_from_suffix(suffix)
-            if self._both_codes_free(debtor_code, creditor_code, company):
-                return suffix
-            suffix += 1
-        return None
-
     def _ensure_account(self, code, name, account_type, company):
         Account = self.env['account.account'].sudo()
         # Try find existing
@@ -86,12 +44,6 @@ class ResPartner(models.Model):
         }
         account = Account.create(vals)
         return account
-
-    def _display_person_name(self, partner):
-        lastname = getattr(partner, 'lastname', '') or ''
-        firstname = getattr(partner, 'firstname', '') or ''
-        name = (f"{lastname}, {firstname}" if lastname or firstname else partner.display_name).strip(', ').strip()
-        return name or partner.name or partner.display_name
 
     def _compute_account_name(self, partner):
         """Kontoname nach Fallback-Kaskade (siehe Business-Logik-Modell §9.2).
