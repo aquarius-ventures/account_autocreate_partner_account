@@ -93,33 +93,6 @@ class ResPartner(models.Model):
         name = (f"{lastname}, {firstname}" if lastname or firstname else partner.display_name).strip(', ').strip()
         return name or partner.name or partner.display_name
 
-    # Property-Setter um Partner.write() zu vermeiden
-    def _set_property(self, partner, company, field_name, account):
-        """Setzt die spezifische Property (res.partner,<id>) via ir.property, ohne partner.write()."""
-        fields_obj = self.env['ir.model.fields']
-        prop_obj = self.env['ir.property'].sudo().with_company(company)
-        field = fields_obj._get('res.partner', field_name)
-        res_id = f"res.partner,{partner.id}"
-
-        prop = prop_obj.search([
-            ('fields_id', '=', field.id),
-            ('res_id', '=', res_id),
-            ('company_id', '=', company.id),
-        ], limit=1)
-
-        vals = {
-            'name': field.name,
-            'type': 'many2one',
-            'fields_id': field.id,
-            'res_id': res_id,
-            'company_id': company.id,
-            'value_reference': f'account.account,{account.id}',
-        }
-        if prop:
-            prop.write({'value_reference': vals['value_reference']})
-        else:
-            prop_obj.create(vals)
-
     def _compute_account_name(self, partner):
         """Kontoname nach Fallback-Kaskade (siehe Business-Logik-Modell §9.2).
         Diskriminiert über den Klartext-Namen, NICHT über display_name (das
@@ -154,7 +127,6 @@ class ResPartner(models.Model):
         Account = self.env['account.account'].sudo()
         Sequence = self.env['ir.sequence'].sudo()
         suffix_seq = Sequence.search([('code', '=', 'res.partner.account_suffix')], limit=1)
-        use_property = bool(self.env.context.get('assign_via_property'))  # bleibt bestehen
         # Trigger-Quelle steuert das Gate-Verhalten (Modell §9.3):
         #   'create'  -> Auto-Anlage: still überspringen + Log
         #   'mass'    -> Massenaktion: still überspringen + Sammel-Log am Ende
@@ -251,10 +223,7 @@ class ResPartner(models.Model):
             # Receivable
             if not has_rec:
                 acc_rec = _ensure(debtor_code, display_name, 'asset_receivable')
-                if use_property:
-                    self._set_property(partner, company, 'property_account_receivable_id', acc_rec)
-                else:
-                    partner.property_account_receivable_id = acc_rec.id
+                partner.property_account_receivable_id = acc_rec.id
                 _logger.info("Debitorenkonto %s angelegt/zugewiesen an %s", debtor_code, partner.display_name)
             else:
                 acc_rec = partner.property_account_receivable_id  # für evtl. spätere Ableitung / Konsistenz
@@ -262,16 +231,13 @@ class ResPartner(models.Model):
             # Payable
             if not has_pay:
                 acc_pay = _ensure(creditor_code, display_name, 'liability_payable')
-                if use_property:
-                    self._set_property(partner, company, 'property_account_payable_id', acc_pay)
-                else:
-                    partner.property_account_payable_id = acc_pay.id
+                partner.property_account_payable_id = acc_pay.id
                 _logger.info("Kreditorenkonto %s angelegt/zugewiesen an %s", creditor_code, partner.display_name)
             else:
                 acc_pay = partner.property_account_payable_id
 
-            # Persistenz des Suffix nur, wenn wir via write() dürfen/gewollt ist
-            if not use_property and not partner.account_suffix:
+            # Persistenz des Suffix (immer, sobald noch keiner gesetzt ist)
+            if not partner.account_suffix:
                 partner.account_suffix = f"{suffix:07d}"
 
             # Sequenz nachziehen (Modell §5): number_next soll auf den nächsten
