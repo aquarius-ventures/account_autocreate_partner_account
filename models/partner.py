@@ -1,4 +1,5 @@
-from odoo import models, api, fields
+from odoo import models, api, fields, _
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -153,12 +154,24 @@ class ResPartner(models.Model):
         Account = self.env['account.account'].sudo()
         Sequence = self.env['ir.sequence'].sudo()
         use_property = bool(self.env.context.get('assign_via_property'))  # bleibt bestehen
+        # Trigger-Quelle steuert das Gate-Verhalten (Modell §9.3):
+        #   'create'  -> Auto-Anlage: still überspringen + Log
+        #   'mass'    -> Massenaktion: still überspringen + Sammel-Log am Ende
+        #   'manual'  -> Einzel-Button: laut crashen (User hat es explizit gewollt)
+        origin = self.env.context.get('autocreate_origin', 'manual')
+        skipped = self.env['res.partner']
 
         for partner in self:
             company = partner.company_id or self.env.company
 
             # --- Anlage-Gate (Modell §9.3): nur benennbare Partner bekommen Konten ---
             if not self._partner_eligible_for_account(partner):
+                if origin == 'manual':
+                    raise UserError(_(
+                        "Konto kann nicht angelegt werden: Partner '%s' hat weder "
+                        "Namen noch WM-ID."
+                    ) % (partner.display_name or partner.id))
+                skipped |= partner
                 _logger.info("Übersprungen (kein Name / keine wm_id): %s", partner.display_name)
                 continue
 
@@ -258,11 +271,14 @@ class ResPartner(models.Model):
             if not use_property and not partner.account_suffix:
                 partner.account_suffix = f"{suffix:07d}"
 
+        if origin == 'mass' and skipped:
+            _logger.info(
+                "Massenanlage: %d von %d Partnern übersprungen (weder Name noch WM-ID).",
+                len(skipped), len(self))
         return True
 
     @api.model_create_multi
     def create(self, vals_list):
-        # VS Code breakpoint here - click on line number to set visual breakpoint
         partners = super().create(vals_list)
-        partners.create_debtor_and_creditor_accounts()
+        partners.with_context(autocreate_origin='create').create_debtor_and_creditor_accounts()
         return partners

@@ -8,6 +8,7 @@ Welt-Trennung (siehe AGENTS.md / Business-Logik-Modell):
 """
 import unittest
 
+from odoo.exceptions import UserError
 from odoo.tests import common, tagged
 
 DEBTOR_PREFIX = "10"
@@ -70,6 +71,14 @@ class TestAutocreateWorld1(common.TransactionCase):
         self.assertEqual(self.RP._compute_account_name(nameless), "")
         self.assertFalse(self.RP._partner_eligible_for_account(nameless),
                          "Ohne Name/wm_id darf kein Konto angelegt werden")
+
+    def test_manual_button_raises_on_ineligible(self):
+        """Einzel-Button (Kontext 'manual') auf einen nicht benennbaren Partner
+        → UserError statt stillem Überspringen (Modell §9.3)."""
+        nameless = self.Partner.new({"name": False})
+        with self.assertRaises(UserError):
+            nameless.with_context(
+                autocreate_origin='manual').create_debtor_and_creditor_accounts()
 
     def test_account_suffix_persisted(self):
         """Der verwendete Suffix wird im Feld account_suffix persistiert."""
