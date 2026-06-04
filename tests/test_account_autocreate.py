@@ -111,6 +111,14 @@ class TestAutocreateWorld1(common.TransactionCase):
             seq.number_next_actual, used + 1,
             "Sequenz muss über den übersprungenen Suffix hinaus nachgezogen sein")
 
+    def test_userror_on_sequence_exhaustion(self):
+        """Modell §9.4: Suffix > 9.999.999 → UserError statt stillem Skip."""
+        seq = self.env["ir.sequence"].search(
+            [("code", "=", "res.partner.account_suffix")], limit=1)
+        seq.write({"number_next": 10_000_000})  # über der Obergrenze 9.999.999
+        with self.assertRaises(UserError):
+            self.Partner.create({"name": "Erschöpfung Test GmbH"})
+
 
 @tagged("account_autocreate", "account_autocreate_wmid", "standard", "post_install", "-at_install")
 class TestAutocreateWorld2WmId(common.TransactionCase):

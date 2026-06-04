@@ -228,8 +228,10 @@ class ResPartner(models.Model):
                     break
                 suffix += 1
             if suffix > 9_999_999:
-                _logger.warning("Keine freie Suffixnummer mehr verfügbar (Firma %s).", company.display_name)
-                continue
+                raise UserError(_(
+                    "Kontonummern-Kreis erschöpft (Firma '%s'): keine freie "
+                    "Suffixnummer mehr verfügbar."
+                ) % company.display_name)
 
             debtor_code = str(DEBTOR_PREFIX * BASE + suffix)
             creditor_code = str(CREDITOR_PREFIX * BASE + suffix)
