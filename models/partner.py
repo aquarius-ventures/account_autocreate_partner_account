@@ -119,6 +119,29 @@ class ResPartner(models.Model):
         else:
             prop_obj.create(vals)
 
+    def _compute_account_name(self, partner):
+        """Kontoname nach Fallback-Kaskade (siehe Business-Logik-Modell §9.2).
+        Diskriminiert über den Klartext-Namen, NICHT über display_name (das
+        selten wirklich leer ist):
+          (a) "Nachname, Vorname" aus den OCA-Feldern lastname/firstname,
+          (b) display_name, sofern ein Klartext-Name (`name`) vorhanden ist.
+        Stufe (c) "WM-<wm_id>" folgt in E2.2.
+        Leerer String, wenn kein benennbarer Anker vorhanden ist."""
+        lastname = (getattr(partner, 'lastname', '') or '').strip()
+        firstname = (getattr(partner, 'firstname', '') or '').strip()
+        if lastname or firstname:
+            return f"{lastname}, {firstname}".strip(', ').strip()  # (a)
+        raw_name = (partner.name or '').strip()
+        if raw_name:
+            return (partner.display_name or raw_name).strip()       # (b)
+        return ''
+
+    def _partner_eligible_for_account(self, partner):
+        """Anlage-Gate (Modell §9.3): ein Partner bekommt nur dann Konten,
+        wenn er benennbar ist. E2.1: Klartext-Name erforderlich; der
+        wm_id-Pfad wird in E2.2 ergänzt."""
+        return bool(self._compute_account_name(partner))
+
     def create_debtor_and_creditor_accounts(self):
         Account = self.env['account.account'].sudo()
         Sequence = self.env['ir.sequence'].sudo()
@@ -126,6 +149,11 @@ class ResPartner(models.Model):
 
         for partner in self:
             company = partner.company_id or self.env.company
+
+            # --- Anlage-Gate (Modell §9.3): nur benennbare Partner bekommen Konten ---
+            if not self._partner_eligible_for_account(partner):
+                _logger.info("Übersprungen (kein Name / keine wm_id): %s", partner.display_name)
+                continue
 
             # --- Früh entscheiden, ob überhaupt Arbeit nötig ist ---
             has_rec = self._has_specific_property(partner, 'property_account_receivable_id')
@@ -184,8 +212,7 @@ class ResPartner(models.Model):
 
             debtor_code = str(DEBTOR_PREFIX * BASE + suffix)
             creditor_code = str(CREDITOR_PREFIX * BASE + suffix)
-            display = ((getattr(partner, 'lastname', '') or ''), (getattr(partner, 'firstname', '') or ''))
-            display_name = (f"{display[0]}, {display[1]}".strip(", ") or partner.display_name)
+            display_name = self._compute_account_name(partner)
 
             # Konten nur erzeugen, wenn wir sie auch zuweisen (min. eine Property fehlt)
             def _ensure(code, name, acc_type):
