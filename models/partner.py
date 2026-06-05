@@ -28,23 +28,6 @@ class ResPartner(models.Model):
             ('company_id', '=', company.id),
         ], limit=1))
 
-    def _ensure_account(self, code, name, account_type, company):
-        Account = self.env['account.account'].sudo()
-        # Try find existing
-        account = Account.search([('code', '=', code), ('company_id', '=', company.id)], limit=1)
-        if account:
-            return account
-        # Create new with correct type
-        vals = {
-            'code': code,
-            'name': name,
-            'reconcile': True,
-            'company_id': company.id,
-            'account_type': account_type,  # 'asset_receivable' or 'liability_payable'
-        }
-        account = Account.create(vals)
-        return account
-
     def _compute_account_name(self, partner):
         """Kontoname nach Fallback-Kaskade (siehe Business-Logik-Modell §9.2).
         Diskriminiert über den Klartext-Namen, NICHT über display_name (das
